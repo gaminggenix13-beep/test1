@@ -1,5 +1,6 @@
 import os
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
+from pydantic import BaseModel
 import google.generativeai as genai
 
 # Initialize FastAPI application
@@ -13,28 +14,23 @@ if api_key:
 # Initialize the generative model
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-@app.post("/webhook")
-async def receive_webhook(request: Request):
-    # 1. Parse the incoming data
-    try:
-        payload = await request.json()
-        # Extract the specific instruction from the payload
-        user_prompt = payload.get("prompt", "Write a 1-sentence value proposition for an AI automation agency.")
-    except Exception:
-        payload = {}
-        user_prompt = "Write a 1-sentence value proposition for an AI automation agency."
+# Define the exact data structure we expect so Swagger UI creates a text box
+class WebhookPayload(BaseModel):
+    prompt: str = "Write a short, high-converting cold email pitching an AI voice receptionist to a dental clinic."
 
-    # 2. Generate the artifact using Gemini
+@app.post("/webhook")
+async def receive_webhook(payload: WebhookPayload):
+    # Generate the artifact using Gemini based on the incoming prompt
     try:
-        response = model.generate_content(user_prompt)
+        response = model.generate_content(payload.prompt)
         generated_artifact = response.text
     except Exception as e:
         generated_artifact = f"Error generating artifact: {str(e)}"
 
-    # 3. Return the final product
+    # Return the final product
     return {
         "status": "success",
-        "received_data": payload,
+        "received_data": {"prompt": payload.prompt},
         "artifact": generated_artifact
     }
 
