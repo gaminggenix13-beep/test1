@@ -11,8 +11,8 @@ api_key = os.getenv("GEMINI_API_KEY")
 if api_key:
     genai.configure(api_key=api_key)
 
-# Initialize the model exactly as specified for your API key
-model = genai.GenerativeModel('3.6 flash')
+# Fix: Using the exact programmatic ID for Gemini 3.6 Flash
+model = genai.GenerativeModel('gemini-3.6-flash')
 
 # Define the exact data structure for Swagger UI
 class WebhookPayload(BaseModel):
