@@ -1,3 +1,5 @@
+import os
+import google.generativeai as genai
 import google.generativeai as genai
 from fastapi import FastAPI, Request
 import requests
