@@ -11,12 +11,11 @@ api_key = os.getenv("GEMINI_API_KEY")
 if api_key:
     genai.configure(api_key=api_key)
 
-# Fix: Switched to gemini-pro to resolve the 404 model not found error
-model = genai.GenerativeModel('gemini-pro')
+# Initialize the model exactly as specified for your API key
+model = genai.GenerativeModel('3.6 flash')
 
 # Define the exact data structure for Swagger UI
 class WebhookPayload(BaseModel):
-    # This is purely a placeholder test prompt. You can change this text to anything.
     prompt: str = "Write a short, high-converting cold email pitching an AI voice receptionist to a dental clinic."
 
 @app.post("/webhook")
