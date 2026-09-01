@@ -11,8 +11,8 @@ api_key = os.getenv("GEMINI_API_KEY")
 if api_key:
     genai.configure(api_key=api_key)
 
-# Switched to gemini-pro to fix the 404 API version error
-model = genai.GenerativeModel('gemini-pro')
+# Using your specific working model string
+model = genai.GenerativeModel('gemini-3.6-flash')
 
 # 2. Make.com Webhook URL
 MAKE_WEBHOOK_URL = os.getenv("MAKE_WEBHOOK_URL")
