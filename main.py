@@ -11,14 +11,13 @@ api_key = os.getenv("GEMINI_API_KEY")
 if api_key:
     genai.configure(api_key=api_key)
 
-model = genai.GenerativeModel('gemini-3.6-flash')
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 # 2. Make.com Webhook URL (Add this to your Render Environment Variables)
 MAKE_WEBHOOK_URL = os.getenv("MAKE_WEBHOOK_URL")
 
 async def process_pr_and_notify(pr_data: dict):
     """Background task to avoid GitHub timeouts and rate limits."""
-    # Safety delay: Prevents rate-limit spikes if multiple PRs merge simultaneously
     await asyncio.sleep(2)
 
     pr_title = pr_data.get("title", "No title")
@@ -45,7 +44,6 @@ async def process_pr_and_notify(pr_data: dict):
     except Exception as e:
         generated_text = f"Error generating artifact: {str(e)}"
 
-    # If Make.com webhook URL is configured, forward the generated text
     if MAKE_WEBHOOK_URL:
         payload_to_make = {
             "repository": repo_name,
@@ -59,16 +57,45 @@ async def process_pr_and_notify(pr_data: dict):
         except Exception as e:
             print(f"Failed to push to Make.com: {e}")
 
+async def process_regeneration(payload: dict):
+    """Background task to rewrite existing drafts."""
+    original_text = payload.get("original_text", "")
+    if not original_text:
+        return
+
+    prompt = f"""
+    You are an expert DevRel and Product Marketer. 
+    The client requested a revision of the following release drafts. 
+    Please rewrite them to be fresher and slightly different while maintaining the exact same 3-part Markdown structure (Changelog, Slack, Social).
+    
+    Original Drafts to Rewrite:
+    {original_text}
+    """
+
+    try:
+        response = model.generate_content(prompt)
+        generated_text = response.text
+    except Exception as e:
+        generated_text = f"Error regenerating artifact: {str(e)}"
+
+    if MAKE_WEBHOOK_URL:
+        payload_to_make = {
+            "repository": "Regenerated Draft",
+            "pr_title": "AI Revision",
+            "author": "GTM Automator",
+            "gtm_artifact": generated_text
+        }
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(MAKE_WEBHOOK_URL, json=payload_to_make, timeout=10.0)
+        except Exception as e:
+            print(f"Failed to push regeneration to Make.com: {e}")
+
 @app.post("/webhook")
 async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
-    """
-    Catches GitHub webhooks, filters out noise to save operations,
-    and responds instantly with 200 OK.
-    """
     event_type = request.headers.get("X-GitHub-Event")
     payload = await request.json()
 
-    # If it's a direct manual test or custom prompt (backward compatibility)
     if "prompt" in payload:
         try:
             res = model.generate_content(payload["prompt"])
@@ -76,22 +103,25 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
-    # Filter: Only process 'pull_request' events that are officially closed and merged
     if event_type == "pull_request":
         action = payload.get("action")
         is_merged = payload.get("pull_request", {}).get("merged", False)
 
         if action == "closed" and is_merged:
             pr_data = payload.get("pull_request", {})
-            # Schedule heavy AI processing in the background and return 200 OK immediately
             background_tasks.add_task(process_pr_and_notify, pr_data)
             return {"status": "accepted", "message": "PR is merged. Processing GTM artifact in background."}
         else:
-            # Drop silently: Saves free operations
             return {"status": "ignored", "message": f"PR action '{action}' (merged={is_merged}) ignored."}
 
-    # Ignore all other GitHub events (pushes, stars, forks)
     return {"status": "ignored", "message": f"Event '{event_type}' ignored to save resources."}
+
+@app.post("/regenerate")
+async def regenerate_webhook(request: Request, background_tasks: BackgroundTasks):
+    """Catches the regeneration request from Make.com's interactive Slack buttons."""
+    payload = await request.json()
+    background_tasks.add_task(process_regeneration, payload)
+    return {"status": "accepted", "message": "Regenerating artifact in background."}
 
 @app.get("/")
 async def root():
