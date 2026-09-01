@@ -11,9 +11,10 @@ api_key = os.getenv("GEMINI_API_KEY")
 if api_key:
     genai.configure(api_key=api_key)
 
-model = genai.GenerativeModel('gemini-1.5-flash')
+# Switched to gemini-pro to fix the 404 API version error
+model = genai.GenerativeModel('gemini-pro')
 
-# 2. Make.com Webhook URL (Add this to your Render Environment Variables)
+# 2. Make.com Webhook URL
 MAKE_WEBHOOK_URL = os.getenv("MAKE_WEBHOOK_URL")
 
 async def process_pr_and_notify(pr_data: dict):
@@ -25,6 +26,7 @@ async def process_pr_and_notify(pr_data: dict):
     pr_author = pr_data.get("user", {}).get("login", "Unknown author")
     repo_name = pr_data.get("head", {}).get("repo", {}).get("name", "Repository")
 
+    # Updated prompt to exactly match your old message structure and tone
     prompt = f"""
     You are an expert DevRel and Product Marketer. A pull request was just merged into the repo '{repo_name}'.
     
@@ -32,10 +34,19 @@ async def process_pr_and_notify(pr_data: dict):
     Author: {pr_author}
     Description/Diff Context: {pr_body}
 
-    Generate the following 3 artifacts in clean Markdown:
-    1. A benefit-driven Changelog entry for users.
-    2. An internal Slack announcement summary for the team.
-    3. A concise social post (X/LinkedIn) highlighting the release.
+    Based on this, generate exactly 4 release artifacts. You MUST use the exact formatting and emojis below:
+
+    📢 Changelog Entry:
+    [Write the user-facing changelog here in an exciting tone]
+
+    💼 LinkedIn Post:
+    [Write the LinkedIn post here]
+
+    🐦 Twitter Post:
+    [Write the short Twitter post here]
+
+    💬 Internal Slack Summary:
+    [Write the team summary here]
     """
 
     try:
@@ -63,10 +74,21 @@ async def process_regeneration(payload: dict):
     if not original_text:
         return
 
+    # Forcing the AI to keep your exact structural layout during regeneration
     prompt = f"""
     You are an expert DevRel and Product Marketer. 
     The client requested a revision of the following release drafts. 
-    Please rewrite them to be fresher and slightly different while maintaining the exact same 3-part Markdown structure (Changelog, Slack, Social).
+    Please rewrite them to be fresher and slightly different. 
+    You MUST maintain the exact same 4-part structure and emojis:
+
+    📢 Changelog Entry:
+    ...
+    💼 LinkedIn Post:
+    ...
+    🐦 Twitter Post:
+    ...
+    💬 Internal Slack Summary:
+    ...
     
     Original Drafts to Rewrite:
     {original_text}
@@ -118,7 +140,6 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
 
 @app.post("/regenerate")
 async def regenerate_webhook(request: Request, background_tasks: BackgroundTasks):
-    """Catches the regeneration request from Make.com's interactive Slack buttons."""
     payload = await request.json()
     background_tasks.add_task(process_regeneration, payload)
     return {"status": "accepted", "message": "Regenerating artifact in background."}
